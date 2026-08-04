@@ -18,6 +18,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import BASE_TOKEN_FILENAME, DOMAIN, PLATFORMS
 from .coordinator import (
     FlumeConfigEntry,
+    FlumeDeviceStatusUpdateCoordinator,
     FlumeNotificationDataUpdateCoordinator,
     FlumeRuntimeData,
 )
@@ -70,16 +71,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlumeConfigEntry) -> boo
     flume_auth, flume_devices, http_session = await hass.async_add_executor_job(
         _setup_entry, hass, entry
     )
+    # Registered before the first refresh so the session is also closed when setup fails.
     entry.async_on_unload(http_session.close)
 
     notification_coordinator = FlumeNotificationDataUpdateCoordinator(
         hass=hass, config_entry=entry, auth=flume_auth
     )
+    device_status_coordinator = FlumeDeviceStatusUpdateCoordinator(
+        hass=hass, config_entry=entry, flume_devices=flume_devices
+    )
+    await device_status_coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = FlumeRuntimeData(
         devices=flume_devices,
         auth=flume_auth,
         http_session=http_session,
+        device_status_coordinator=device_status_coordinator,
         notifications_coordinator=notification_coordinator,
     )
 

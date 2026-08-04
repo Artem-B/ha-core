@@ -12,9 +12,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
-    DEVICE_CONNECTION_SCAN_INTERVAL,
     DEVICE_SCAN_INTERVAL,
+    DEVICE_STATUS_SCAN_INTERVAL,
     DOMAIN,
+    FLUME_TYPE_SENSOR,
+    KEY_DEVICE_BATTERY_LEVEL,
+    KEY_DEVICE_CONNECTED,
+    KEY_DEVICE_ID,
+    KEY_DEVICE_TYPE,
     LOGGER,
     NOTIFICATION_SCAN_INTERVAL,
 )
@@ -27,6 +32,7 @@ class FlumeRuntimeData:
     devices: FlumeDeviceList
     auth: FlumeAuth
     http_session: Session
+    device_status_coordinator: FlumeDeviceStatusUpdateCoordinator
     notifications_coordinator: FlumeNotificationDataUpdateCoordinator
 
 
@@ -69,8 +75,8 @@ class FlumeDeviceDataUpdateCoordinator(DataUpdateCoordinator[None]):
         )
 
 
-class FlumeDeviceConnectionUpdateCoordinator(DataUpdateCoordinator[None]):
-    """Date update coordinator to read connected status from Devices endpoint."""
+class FlumeDeviceStatusUpdateCoordinator(DataUpdateCoordinator[None]):
+    """Data update coordinator to read device status from the Devices endpoint."""
 
     config_entry: FlumeConfigEntry
 
@@ -86,25 +92,36 @@ class FlumeDeviceConnectionUpdateCoordinator(DataUpdateCoordinator[None]):
             config_entry=config_entry,
             name=DOMAIN,
             logger=LOGGER,
-            update_interval=DEVICE_CONNECTION_SCAN_INTERVAL,
+            update_interval=DEVICE_STATUS_SCAN_INTERVAL,
         )
 
         self.flume_devices = flume_devices
         self.connected: dict[str, bool] = {}
+        self.battery_levels: dict[str, str | None] = {}
 
-    def _update_connectivity(self) -> None:
-        """Update device connectivity.."""
+    def _update_device_status(self) -> None:
+        """Query flume for the current device status."""
+        devices = self.flume_devices.get_devices()
         self.connected = {
-            device["id"]: device["connected"]
-            for device in self.flume_devices.get_devices()
+            device[KEY_DEVICE_ID]: device[KEY_DEVICE_CONNECTED] for device in devices
         }
-        LOGGER.debug("Connectivity %s", self.connected)
+        # Only sensors report a battery level, and the key may be absent entirely.
+        self.battery_levels = {
+            device[KEY_DEVICE_ID]: device.get(KEY_DEVICE_BATTERY_LEVEL)
+            for device in devices
+            if device[KEY_DEVICE_TYPE] == FLUME_TYPE_SENSOR
+        }
+        LOGGER.debug(
+            "Device status connected=%s battery_levels=%s",
+            self.connected,
+            self.battery_levels,
+        )
 
     @override
     async def _async_update_data(self) -> None:
         """Update the device list."""
         try:
-            await self.hass.async_add_executor_job(self._update_connectivity)
+            await self.hass.async_add_executor_job(self._update_device_status)
         except Exception as ex:
             raise UpdateFailed(f"Error communicating with flume API: {ex}") from ex
 
@@ -132,8 +149,8 @@ class FlumeNotificationDataUpdateCoordinator(DataUpdateCoordinator[None]):
     def _update_lists(self) -> None:
         """Query flume for notification list."""
         # Get notifications (read or unread).
-        # The related binary sensors (leak detected, high flow, low battery)
-        # will be active until the notification is deleted in the Flume app.
+        # The leak and high-flow binary sensors remain active until the
+        # notification is deleted in the Flume app.
         self.notifications = pyflume.FlumeNotificationList(
             self.auth, read=None
         ).notification_list

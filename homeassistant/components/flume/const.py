@@ -17,7 +17,7 @@ DEFAULT_NAME = "Flume Sensor"
 # Flume API limits queries to 120 per hour
 NOTIFICATION_SCAN_INTERVAL = timedelta(minutes=5)
 DEVICE_SCAN_INTERVAL = timedelta(minutes=1)
-DEVICE_CONNECTION_SCAN_INTERVAL = timedelta(minutes=60)
+DEVICE_STATUS_SCAN_INTERVAL = timedelta(minutes=60)
 
 LOGGER = logging.getLogger(__package__)
 
@@ -33,6 +33,10 @@ KEY_DEVICE_ID = "id"
 KEY_DEVICE_LOCATION = "location"
 KEY_DEVICE_LOCATION_NAME = "name"
 KEY_DEVICE_LOCATION_TIMEZONE = "tz"
+KEY_DEVICE_CONNECTED = "connected"
+KEY_DEVICE_BATTERY_LEVEL = "battery_level"
+
+BATTERY_LEVEL_LOW = "low"
 
 
 NOTIFICATION_HIGH_FLOW = "High Flow Alert"
@@ -40,4 +44,3 @@ NOTIFICATION_BRIDGE_DISCONNECT = "Bridge Disconnection"
 BRIDGE_NOTIFICATION_KEY = "connected"
 BRIDGE_NOTIFICATION_RULE = "Bridge Disconnection"
 NOTIFICATION_LEAK_DETECTED = "Flume Smart Leak Alert"
-NOTIFICATION_LOW_BATTERY = "Low Battery"

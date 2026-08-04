@@ -45,6 +45,10 @@ SENSOR_DEVICE = {
     },
     "name": "Flume Sensor",
     "connected": True,
+    "battery_level": "high",
+}
+SENSOR_DEVICE_WITHOUT_BATTERY = {
+    key: value for key, value in SENSOR_DEVICE.items() if key != "battery_level"
 }
 DEVICE_LIST = [BRIDGE_DEVICE, SENSOR_DEVICE]
 NOTIFICATIONS_URL = "https://api.flumetech.com/users/test-user-id/notifications?limit=50&offset=0&sort_direction=ASC"

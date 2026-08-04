@@ -8,21 +8,22 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import (
-    FlumeDeviceConnectionUpdateCoordinator,
     FlumeDeviceDataUpdateCoordinator,
+    FlumeDeviceStatusUpdateCoordinator,
     FlumeNotificationDataUpdateCoordinator,
 )
 
 
 class FlumeEntity[
     _FlumeCoordinatorT: FlumeDeviceDataUpdateCoordinator
-    | FlumeDeviceConnectionUpdateCoordinator
+    | FlumeDeviceStatusUpdateCoordinator
     | FlumeNotificationDataUpdateCoordinator
 ](CoordinatorEntity[_FlumeCoordinatorT]):
     """Base entity class."""
 
     _attr_attribution = "Data provided by Flume API"
     _attr_has_entity_name = True
+    _refresh_on_add = True
 
     def __init__(
         self,
@@ -56,6 +57,14 @@ class FlumeEntity[
     async def async_added_to_hass(self) -> None:
         """Request an update when added."""
         await super().async_added_to_hass()
-        # We do not ask for an update with async_add_entities()
-        # because it will update disabled entities
-        await self.coordinator.async_request_refresh()
+        if self._refresh_on_add:
+            # We do not ask for an update with async_add_entities()
+            # because it will update disabled entities
+            await self.coordinator.async_request_refresh()
+
+
+class FlumeDeviceStatusEntity(FlumeEntity[FlumeDeviceStatusUpdateCoordinator]):
+    """Base class for entities backed by the device status coordinator."""
+
+    # Config entry setup already performed this coordinator's first refresh.
+    _refresh_on_add = False

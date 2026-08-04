@@ -9,11 +9,18 @@ from requests_mock.mocker import Mocker
 from syrupy.assertion import SnapshotAssertion
 
 from homeassistant.components.flume.const import DOMAIN
-from homeassistant.const import STATE_ON, Platform
+from homeassistant.const import STATE_OFF, STATE_ON, STATE_UNAVAILABLE, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 
-from .conftest import NOTIFICATIONS_URL, SENSOR_DEVICE, USER_ID
+from .conftest import (
+    BRIDGE_DEVICE,
+    DEVICE_LIST_URL,
+    NOTIFICATIONS_URL,
+    SENSOR_DEVICE,
+    SENSOR_DEVICE_WITHOUT_BATTERY,
+    USER_ID,
+)
 
 from tests.common import MockConfigEntry, snapshot_platform
 
@@ -61,7 +68,6 @@ async def test_binary_sensors(
     [
         pytest.param("Flume Smart Leak Alert", "leak_1234", id="leak"),
         pytest.param("High Flow Alert", "flow_1234", id="high_flow"),
-        pytest.param("Low Battery", "low_battery_1234", id="low_battery"),
     ],
 )
 async def test_notification_binary_sensors(
@@ -91,3 +97,54 @@ async def test_notification_binary_sensors(
     state = hass.states.get(entity_id)
     assert state is not None
     assert state.state == STATE_ON
+
+
+@pytest.mark.usefixtures("access_token")
+@pytest.mark.parametrize(
+    ("sensor_device", "expected_state"),
+    [
+        pytest.param({**SENSOR_DEVICE, "battery_level": "high"}, STATE_OFF, id="high"),
+        pytest.param(
+            {**SENSOR_DEVICE, "battery_level": "medium"}, STATE_OFF, id="medium"
+        ),
+        pytest.param({**SENSOR_DEVICE, "battery_level": "low"}, STATE_ON, id="low"),
+        pytest.param(
+            {**SENSOR_DEVICE, "battery_level": None}, STATE_UNAVAILABLE, id="null"
+        ),
+        pytest.param(
+            SENSOR_DEVICE_WITHOUT_BATTERY, STATE_UNAVAILABLE, id="not_reported"
+        ),
+    ],
+)
+async def test_battery_uses_current_device_state(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    requests_mock: Mocker,
+    sensor_device: dict[str, Any],
+    expected_state: str,
+) -> None:
+    """Test battery state comes from the current device status.
+
+    An uncleared low battery notification is present in every case, so these
+    also cover that it no longer drives the sensor.
+    """
+    requests_mock.get(
+        NOTIFICATIONS_URL,
+        json={"data": [active_notification("Low Battery")]},
+    )
+    requests_mock.get(
+        DEVICE_LIST_URL,
+        json={"data": [BRIDGE_DEVICE, sensor_device]},
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    entity_id = entity_registry.async_get_entity_id(
+        Platform.BINARY_SENSOR, DOMAIN, "low_battery_1234"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == expected_state

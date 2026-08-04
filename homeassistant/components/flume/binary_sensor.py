@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import (
+    BATTERY_LEVEL_LOW,
     FLUME_TYPE_BRIDGE,
     FLUME_TYPE_SENSOR,
     KEY_DEVICE_ID,
@@ -21,18 +22,18 @@ from .const import (
     KEY_DEVICE_TYPE,
     NOTIFICATION_HIGH_FLOW,
     NOTIFICATION_LEAK_DETECTED,
-    NOTIFICATION_LOW_BATTERY,
 )
-from .coordinator import (
-    FlumeConfigEntry,
-    FlumeDeviceConnectionUpdateCoordinator,
-    FlumeNotificationDataUpdateCoordinator,
-)
-from .entity import FlumeEntity
+from .coordinator import FlumeConfigEntry, FlumeNotificationDataUpdateCoordinator
+from .entity import FlumeDeviceStatusEntity, FlumeEntity
 from .util import get_valid_flume_devices
 
 BINARY_SENSOR_DESCRIPTION_CONNECTED = BinarySensorEntityDescription(
     key="connected", device_class=BinarySensorDeviceClass.CONNECTIVITY
+)
+BINARY_SENSOR_DESCRIPTION_LOW_BATTERY = BinarySensorEntityDescription(
+    key="low_battery",
+    entity_category=EntityCategory.DIAGNOSTIC,
+    device_class=BinarySensorDeviceClass.BATTERY,
 )
 
 
@@ -56,12 +57,6 @@ FLUME_BINARY_NOTIFICATION_SENSORS: tuple[FlumeBinarySensorEntityDescription, ...
         entity_category=EntityCategory.DIAGNOSTIC,
         event_rule=NOTIFICATION_HIGH_FLOW,
     ),
-    FlumeBinarySensorEntityDescription(
-        key="low_battery",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        device_class=BinarySensorDeviceClass.BATTERY,
-        event_rule=NOTIFICATION_LOW_BATTERY,
-    ),
 )
 
 
@@ -75,12 +70,12 @@ async def async_setup_entry(
     flume_devices = flume_domain_data.devices
 
     flume_entity_list: list[
-        FlumeNotificationBinarySensor | FlumeConnectionBinarySensor
+        FlumeNotificationBinarySensor
+        | FlumeConnectionBinarySensor
+        | FlumeBatteryBinarySensor
     ] = []
 
-    connection_coordinator = FlumeDeviceConnectionUpdateCoordinator(
-        hass=hass, config_entry=config_entry, flume_devices=flume_devices
-    )
+    device_status_coordinator = flume_domain_data.device_status_coordinator
     notification_coordinator = flume_domain_data.notifications_coordinator
     flume_devices = get_valid_flume_devices(flume_devices)
     for device in flume_devices:
@@ -88,7 +83,7 @@ async def async_setup_entry(
         device_location_name = device[KEY_DEVICE_LOCATION][KEY_DEVICE_LOCATION_NAME]
 
         connection_sensor = FlumeConnectionBinarySensor(
-            coordinator=connection_coordinator,
+            coordinator=device_status_coordinator,
             description=BINARY_SENSOR_DESCRIPTION_CONNECTED,
             device_id=device_id,
             location_name=device_location_name,
@@ -99,6 +94,15 @@ async def async_setup_entry(
 
         if device[KEY_DEVICE_TYPE] != FLUME_TYPE_SENSOR:
             continue
+
+        flume_entity_list.append(
+            FlumeBatteryBinarySensor(
+                coordinator=device_status_coordinator,
+                description=BINARY_SENSOR_DESCRIPTION_LOW_BATTERY,
+                device_id=device_id,
+                location_name=device_location_name,
+            )
+        )
 
         # Build notification sensors
         flume_entity_list.extend(
@@ -137,9 +141,7 @@ class FlumeNotificationBinarySensor(
         )
 
 
-class FlumeConnectionBinarySensor(
-    FlumeEntity[FlumeDeviceConnectionUpdateCoordinator], BinarySensorEntity
-):
+class FlumeConnectionBinarySensor(FlumeDeviceStatusEntity, BinarySensorEntity):
     """Binary Sensor class for WIFI Connection status."""
 
     entity_description: FlumeBinarySensorEntityDescription
@@ -153,3 +155,24 @@ class FlumeConnectionBinarySensor(
         return bool(
             (connected := self.coordinator.connected) and connected[self.device_id]
         )
+
+
+class FlumeBatteryBinarySensor(FlumeDeviceStatusEntity, BinarySensorEntity):
+    """Binary sensor for the current Flume battery status."""
+
+    @property
+    def battery_level(self) -> str | None:
+        """Return the reported battery level."""
+        return self.coordinator.battery_levels.get(self.device_id)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the device reports a battery level."""
+        return super().available and self.battery_level is not None
+
+    @property
+    @override
+    def is_on(self) -> bool:
+        """Return whether the battery is low."""
+        return self.battery_level == BATTERY_LEVEL_LOW

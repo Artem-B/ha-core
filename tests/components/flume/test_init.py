@@ -1,9 +1,11 @@
 """Test the flume init."""
 
 from collections.abc import Generator
+from http import HTTPStatus
 from unittest.mock import patch
 
 import pytest
+import requests
 from requests_mock.mocker import Mocker
 
 from homeassistant import config_entries
@@ -12,7 +14,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
 
-from .conftest import USER_ID
+from .conftest import DEVICE_LIST, DEVICE_LIST_URL, USER_ID
 
 from tests.common import MockConfigEntry
 
@@ -42,6 +44,30 @@ async def test_setup_config_entry(
         assert await hass.config_entries.async_unload(config_entry.entry_id)
 
     assert config_entry.state is config_entries.ConfigEntryState.NOT_LOADED
+    assert mock_close.called
+
+
+@pytest.mark.usefixtures("access_token")
+async def test_device_status_first_refresh_failure(
+    hass: HomeAssistant,
+    requests_mock: Mocker,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Test a device list failure after setup already fetched it once."""
+    requests_mock.get(
+        DEVICE_LIST_URL,
+        [
+            {"status_code": HTTPStatus.OK, "json": {"data": DEVICE_LIST}},
+            {"exc": requests.exceptions.ConnectTimeout},
+        ],
+    )
+
+    with patch("homeassistant.components.flume.Session.close") as mock_close:
+        assert not await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert config_entry.state is config_entries.ConfigEntryState.SETUP_RETRY
+    # Setup never assigns runtime_data, so the session is closed via async_on_unload.
     assert mock_close.called
 
 
