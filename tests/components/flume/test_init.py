@@ -32,13 +32,17 @@ async def test_setup_config_entry(
     config_entry: MockConfigEntry,
 ) -> None:
     """Test load and unload of a ConfigEntry."""
-    assert await hass.config_entries.async_setup(config_entry.entry_id)
-    await hass.async_block_till_done()
+    with patch("homeassistant.components.flume.Session.close") as mock_close:
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
 
-    assert config_entry.state is config_entries.ConfigEntryState.LOADED
+        assert config_entry.state is config_entries.ConfigEntryState.LOADED
+        assert not mock_close.called
 
-    assert await hass.config_entries.async_unload(config_entry.entry_id)
+        assert await hass.config_entries.async_unload(config_entry.entry_id)
+
     assert config_entry.state is config_entries.ConfigEntryState.NOT_LOADED
+    assert mock_close.called
 
 
 @pytest.mark.usefixtures("access_token", "device_list_timeout")

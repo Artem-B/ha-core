@@ -70,6 +70,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlumeConfigEntry) -> boo
     flume_auth, flume_devices, http_session = await hass.async_add_executor_job(
         _setup_entry, hass, entry
     )
+    entry.async_on_unload(http_session.close)
+
     notification_coordinator = FlumeNotificationDataUpdateCoordinator(
         hass=hass, config_entry=entry, auth=flume_auth
     )
@@ -88,5 +90,4 @@ async def async_setup_entry(hass: HomeAssistant, entry: FlumeConfigEntry) -> boo
 
 async def async_unload_entry(hass: HomeAssistant, entry: FlumeConfigEntry) -> bool:
     """Unload a config entry."""
-    entry.runtime_data.http_session.close()
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
