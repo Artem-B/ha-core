@@ -11,7 +11,7 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfVolume, UnitOfVolumeFlowRate
+from homeassistant.const import EntityCategory, UnitOfVolume, UnitOfVolumeFlowRate
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -26,7 +26,7 @@ from .const import (
     KEY_DEVICE_TYPE,
 )
 from .coordinator import FlumeConfigEntry, FlumeDeviceDataUpdateCoordinator
-from .entity import FlumeEntity
+from .entity import FlumeBatteryEntity, FlumeEntity
 from .util import get_valid_flume_devices
 
 FLUME_QUERIES_SENSOR: tuple[SensorEntityDescription, ...] = (
@@ -87,6 +87,14 @@ FLUME_QUERIES_SENSOR: tuple[SensorEntityDescription, ...] = (
     ),
 )
 
+BATTERY_LEVEL_SENSOR_DESCRIPTION = SensorEntityDescription(
+    key="battery_level",
+    translation_key="battery_level",
+    device_class=SensorDeviceClass.ENUM,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    options=["low", "medium", "high"],
+)
+
 
 def make_flume_datas(
     http_session: Session, flume_auth: FlumeAuth, flume_devices: list[dict[str, Any]]
@@ -124,7 +132,7 @@ async def async_setup_entry(
         for device in get_valid_flume_devices(flume_devices)
         if device[KEY_DEVICE_TYPE] == FLUME_TYPE_SENSOR
     ]
-    flume_entity_list: list[FlumeSensor] = []
+    flume_entity_list: list[FlumeSensor | FlumeBatteryLevelSensor] = []
     flume_datas = await hass.async_add_executor_job(
         make_flume_datas, http_session, flume_auth, flume_devices
     )
@@ -149,6 +157,14 @@ async def async_setup_entry(
                 for description in FLUME_QUERIES_SENSOR
             ]
         )
+        flume_entity_list.append(
+            FlumeBatteryLevelSensor(
+                coordinator=flume_domain_data.device_status_coordinator,
+                description=BATTERY_LEVEL_SENSOR_DESCRIPTION,
+                device_id=device_id,
+                location_name=device_location_name,
+            )
+        )
 
     async_add_entities(flume_entity_list)
 
@@ -165,3 +181,13 @@ class FlumeSensor(FlumeEntity[FlumeDeviceDataUpdateCoordinator], SensorEntity):
             return None
 
         return self.coordinator.flume_device.values[sensor_key]
+
+
+class FlumeBatteryLevelSensor(FlumeBatteryEntity, SensorEntity):
+    """Representation of the current Flume battery level."""
+
+    @property
+    @override
+    def native_value(self) -> StateType:
+        """Return the battery level."""
+        return self.battery_level

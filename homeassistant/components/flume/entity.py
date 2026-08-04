@@ -68,3 +68,18 @@ class FlumeDeviceStatusEntity(FlumeEntity[FlumeDeviceStatusUpdateCoordinator]):
 
     # Config entry setup already performed this coordinator's first refresh.
     _refresh_on_add = False
+
+
+class FlumeBatteryEntity(FlumeDeviceStatusEntity):
+    """Base class for entities backed by the device battery level."""
+
+    @property
+    def battery_level(self) -> str | None:
+        """Return the reported battery level."""
+        return self.coordinator.battery_levels.get(self.device_id)
+
+    @property
+    @override
+    def available(self) -> bool:
+        """Return whether the device reports a battery level."""
+        return super().available and self.battery_level is not None

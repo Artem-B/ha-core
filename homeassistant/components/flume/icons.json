@@ -7,6 +7,16 @@
       "leak": {
         "default": "mdi:pipe-leak"
       }
+    },
+    "sensor": {
+      "battery_level": {
+        "default": "mdi:battery",
+        "state": {
+          "high": "mdi:battery-high",
+          "low": "mdi:battery-low",
+          "medium": "mdi:battery-medium"
+        }
+      }
     }
   },
   "services": {

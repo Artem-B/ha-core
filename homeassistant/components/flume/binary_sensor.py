@@ -24,7 +24,7 @@ from .const import (
     NOTIFICATION_LEAK_DETECTED,
 )
 from .coordinator import FlumeConfigEntry, FlumeNotificationDataUpdateCoordinator
-from .entity import FlumeDeviceStatusEntity, FlumeEntity
+from .entity import FlumeBatteryEntity, FlumeDeviceStatusEntity, FlumeEntity
 from .util import get_valid_flume_devices
 
 BINARY_SENSOR_DESCRIPTION_CONNECTED = BinarySensorEntityDescription(
@@ -157,19 +157,8 @@ class FlumeConnectionBinarySensor(FlumeDeviceStatusEntity, BinarySensorEntity):
         )
 
 
-class FlumeBatteryBinarySensor(FlumeDeviceStatusEntity, BinarySensorEntity):
+class FlumeBatteryBinarySensor(FlumeBatteryEntity, BinarySensorEntity):
     """Binary sensor for the current Flume battery status."""
-
-    @property
-    def battery_level(self) -> str | None:
-        """Return the reported battery level."""
-        return self.coordinator.battery_levels.get(self.device_id)
-
-    @property
-    @override
-    def available(self) -> bool:
-        """Return whether the device reports a battery level."""
-        return super().available and self.battery_level is not None
 
     @property
     @override

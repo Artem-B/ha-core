@@ -1,14 +1,24 @@
 """Test the flume sensor."""
 
+from typing import Any
 from unittest.mock import patch
 
 import pytest
+from requests_mock.mocker import Mocker
 from syrupy.assertion import SnapshotAssertion
 
-from homeassistant.const import Platform
+from homeassistant.components.flume.const import DOMAIN
+from homeassistant.const import STATE_UNAVAILABLE, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+
+from .conftest import (
+    BRIDGE_DEVICE,
+    DEVICE_LIST_URL,
+    SENSOR_DEVICE,
+    SENSOR_DEVICE_WITHOUT_BATTERY,
+)
 
 from tests.common import MockConfigEntry, snapshot_platform
 
@@ -47,3 +57,49 @@ async def test_sensors(
         await hass.async_block_till_done()
 
     await snapshot_platform(hass, entity_registry, snapshot, config_entry.entry_id)
+
+
+@pytest.mark.usefixtures("access_token")
+@pytest.mark.parametrize(
+    ("sensor_device", "expected_state"),
+    [
+        pytest.param({**SENSOR_DEVICE, "battery_level": "low"}, "low", id="low"),
+        pytest.param(
+            {**SENSOR_DEVICE, "battery_level": "medium"}, "medium", id="medium"
+        ),
+        pytest.param({**SENSOR_DEVICE, "battery_level": "high"}, "high", id="high"),
+        pytest.param(
+            {**SENSOR_DEVICE, "battery_level": None}, STATE_UNAVAILABLE, id="null"
+        ),
+        pytest.param(
+            SENSOR_DEVICE_WITHOUT_BATTERY, STATE_UNAVAILABLE, id="not_reported"
+        ),
+    ],
+)
+async def test_battery_level(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    entity_registry: er.EntityRegistry,
+    requests_mock: Mocker,
+    sensor_device: dict[str, Any],
+    expected_state: str,
+) -> None:
+    """Test the battery levels reported by the devices API."""
+    requests_mock.get(
+        DEVICE_LIST_URL,
+        json={"data": [BRIDGE_DEVICE, sensor_device]},
+    )
+
+    with patch("homeassistant.components.flume.sensor.FlumeData") as mock_flume_data:
+        mock_flume_data.return_value.values = {}
+
+        assert await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    entity_id = entity_registry.async_get_entity_id(
+        Platform.SENSOR, DOMAIN, "battery_level_1234"
+    )
+    assert entity_id is not None
+    state = hass.states.get(entity_id)
+    assert state is not None
+    assert state.state == expected_state

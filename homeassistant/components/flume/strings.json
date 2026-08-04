@@ -39,6 +39,14 @@
       }
     },
     "sensor": {
+      "battery_level": {
+        "name": "Battery level",
+        "state": {
+          "high": "[%key:common::state::high%]",
+          "low": "[%key:common::state::low%]",
+          "medium": "[%key:common::state::medium%]"
+        }
+      },
       "current_interval": {
         "name": "Current"
       },
